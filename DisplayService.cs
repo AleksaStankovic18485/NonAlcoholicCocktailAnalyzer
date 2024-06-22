@@ -13,9 +13,6 @@ namespace NonAlcoholicCocktailAnalyzer
             {
                 Console.WriteLine($"{kvp.Key}: {kvp.Value}");
             }
-
-            // Here you would add logic to generate and display a word cloud if needed.
-            // For now, we simply print the results.
         }
     }
 }
