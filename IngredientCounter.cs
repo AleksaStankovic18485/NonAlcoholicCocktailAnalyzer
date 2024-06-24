@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Reactive.Linq;
+using System.Reactive.Threading.Tasks;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 
@@ -9,40 +11,66 @@ namespace NonAlcoholicCocktailAnalyzer
 {
     public class IngredientCounter
     {
-        private readonly CocktailService _cocktailService;
+        private readonly HttpClient _httpClient = new HttpClient();
+        private readonly string _baseUrl = "https://www.thecocktaildb.com/api/json/v1/1/filter.php";
+        private readonly HashSet<string> _validParams = new HashSet<string> { "Non_Alcoholic" };
 
-        public IngredientCounter()
+        public IObservable<KeyValuePair<string, int>> GetIngredientCountsObservable(string drinkType)
         {
-            _cocktailService = new CocktailService();
+            if (!_validParams.Contains(drinkType))
+            {
+                throw new ArgumentException("Invalid drink type parameter. Allowed values: Non_Alcoholic");
+            }
+
+            string url = $"{_baseUrl}?a={drinkType}";
+
+            return _httpClient.GetStringAsync(url)
+                .ToObservable()
+                .SelectMany(cocktailData =>
+                {
+                    var drinks = JObject.Parse(cocktailData)["drinks"];
+                    if (drinks == null)
+                    {
+                        throw new Exception("No drinks found for the specified type.");
+                    }
+
+                    var drinkObservables = drinks
+                        .Select(drink => GetDrinkIngredientsObservable((string)drink["idDrink"]))
+                        .ToArray();
+
+                    return Observable.Merge(drinkObservables)
+                                     .SelectMany(ingredients => ingredients)
+                                     .GroupBy(ingredient => ingredient)
+                                     .SelectMany(group => group.Count().Select(count => new KeyValuePair<string, int>(group.Key, count)));
+                });
         }
 
-        public async Task<Dictionary<string, int>> CountIngredientsAsync(IEnumerable<JToken> cocktails)
+        private IObservable<IEnumerable<string>> GetDrinkIngredientsObservable(string drinkId)
         {
-            var ingredientCounts = new Dictionary<string, int>();
+            string url = $"https://www.thecocktaildb.com/api/json/v1/1/lookup.php?i={drinkId}";
 
-            var ingredientStreams = cocktails.Select(cocktail =>
-            {
-                var cocktailId = cocktail["idDrink"].ToString();
-                return Observable.FromAsync(() => _cocktailService.FetchIngredientsForCocktailAsync(cocktailId));
-            });
-
-            await Observable.Merge(ingredientStreams)
-                .ForEachAsync(ingredients =>
+            return _httpClient.GetStringAsync(url)
+                .ToObservable()
+                .Select(drinkDetails =>
                 {
-                    foreach (var ingredient in ingredients)
+                    var drink = JObject.Parse(drinkDetails)["drinks"]?.FirstOrDefault();
+                    if (drink == null)
                     {
-                        if (ingredientCounts.ContainsKey(ingredient))
+                        throw new Exception($"No details found for drink ID {drinkId}");
+                    }
+
+                    var ingredients = new List<string>();
+                    for (int i = 1; i <= 15; i++)
+                    {
+                        var ingredient = (string)drink[$"strIngredient{i}"];
+                        if (!string.IsNullOrEmpty(ingredient))
                         {
-                            ingredientCounts[ingredient]++;
-                        }
-                        else
-                        {
-                            ingredientCounts[ingredient] = 1;
+                            ingredients.Add(ingredient);
                         }
                     }
-                });
 
-            return ingredientCounts;
+                    return ingredients.AsEnumerable();
+                });
         }
     }
 }

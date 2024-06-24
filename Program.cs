@@ -1,19 +1,22 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Http;
-using System.Reactive.Linq;
-using System.Threading.Tasks;
-using Newtonsoft.Json.Linq;
+﻿using NonAlcoholicCocktailAnalyzer;
+using System;
 
 namespace NonAlcoholicCocktailAnalyzer
 {
     class Program
     {
-        static async Task Main(string[] args)
+        static void Main(string[] args)
         {
-            var ingredientAnalyzer = new IngredientAnalyzer();
-            await ingredientAnalyzer.AnalyzeIngredientsAsync();
+            Console.WriteLine("Enter the drink type (e.g., Non_Alcoholic): ");
+            string drinkType = Console.ReadLine();
+
+            var ingredientCounter = new IngredientCounter();
+            var ingredientAnalyzer = new IngredientPrikaz(ingredientCounter);
+
+            ingredientAnalyzer.AnalyzeIngredients(drinkType);
+
+            Console.WriteLine("Press any key to exit...");
+            Console.ReadKey();
         }
     }
 }
